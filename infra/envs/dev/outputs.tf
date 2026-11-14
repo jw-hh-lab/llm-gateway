@@ -9,3 +9,7 @@ output "public_ip" {
 output "public_dns" {
   value = module.compute.public_dns
 }
+
+output "api_url" {
+  value = "https://${module.cdn.domain_name}"
+}
