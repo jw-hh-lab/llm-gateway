@@ -1,0 +1,76 @@
+# MySQL: 크레딧·원장 데이터를 저장하는 DB.
+# StatefulSet을 쓰는 이유: Pod가 다시 떠도 같은 이름(mysql-0)과 같은 디스크(PVC)를 그대로 붙여 줘서 데이터가 유지됨
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+  namespace: tollgate
+spec:
+  selector:
+    app: mysql
+  ports:
+    - port: 3306
+      targetPort: 3306
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mysql
+  namespace: tollgate
+spec:
+  serviceName: mysql
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+        - name: mysql
+          image: mysql:8.4
+          args:
+            - --character-set-server=utf8mb4 # 한글·이모지 저장
+            - --collation-server=utf8mb4_unicode_ci
+          env:
+            - name: MYSQL_DATABASE
+              value: tollgate
+            - name: MYSQL_USER
+              value: tollgate
+            - name: MYSQL_ROOT_PASSWORD # 비밀번호는 YAML에 적지 않고 Secret에서 꺼내 씀
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-secret
+                  key: root-password
+            - name: MYSQL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-secret
+                  key: app-password
+          ports:
+            - containerPort: 3306
+          readinessProbe: # 3306이 열려야 "준비됨"으로 보고 트래픽을 보냄
+            tcpSocket:
+              port: 3306
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 512Mi
+            limits:
+              memory: 1Gi
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/mysql
+  volumeClaimTemplates: # k3s 기본 local-path: EC2 디스크(EBS)에 저장 → 서버를 껐다 켜도 데이터 유지
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: local-path
+        resources:
+          requests:
+            storage: 5Gi
